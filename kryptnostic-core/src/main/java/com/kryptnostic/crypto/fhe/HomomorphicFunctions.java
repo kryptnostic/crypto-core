@@ -97,8 +97,8 @@ public class HomomorphicFunctions {
         int plaintextLength = E1.cols(),
             ciphertextLength = E1.rows();
         
-        SimplePolynomialFunction X = PolynomialFunctions.lowerBinaryIdentity( plaintextLength );
-        SimplePolynomialFunction Y = PolynomialFunctions.upperBinaryIdentity( plaintextLength );
+        SimplePolynomialFunction X = PolynomialFunctions.lowerBinaryIdentity( ciphertextLength ); // matrix dimension mismatch
+        SimplePolynomialFunction Y = PolynomialFunctions.upperBinaryIdentity( ciphertextLength );
         SimplePolynomialFunction DX = D.multiply( X );
         SimplePolynomialFunction DY = D.multiply( Y );
         SimplePolynomialFunction DXplusY = D.multiply( X.xor( Y ) );
