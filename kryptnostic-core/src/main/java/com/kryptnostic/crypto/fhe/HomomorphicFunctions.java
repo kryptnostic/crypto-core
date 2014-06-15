@@ -134,8 +134,32 @@ public class HomomorphicFunctions {
         SimplePolynomialFunction PLL =
                 E1
                     .multiply( Lx.and( Ly ).xor( privateKey.getF().compose( DXplusY ) ) ) 
-                    .xor( E2.multiply( DX ) );
+                    .xor( E2.multiply( DXplusY ) );
+        SimplePolynomialFunction PRL =
+        		E1
+        			.multiply( R.inverse().multiply( Lx ).and( Ly ).xor( privateKey.getF().compose( DXplusY ) ) )
+        			.xor( E2.multiply( DXplusY ) );
+        SimplePolynomialFunction PLR = 
+        		E1
+        			.multiply( Lx.and( R.inverse().multiply( Ly ) ).xor( privateKey.getF().compose( DXplusY ) ) )
+        			.xor( E2.multiply( DXplusY ) );
+        SimplePolynomialFunction PRR =
+        		E1
+	        		.multiply( R.inverse().multiply( Lx ).and( R.inverse().multiply( Ly ) ).xor( privateKey.getF().compose( DXplusY ) ) ) 
+	                .xor( E2.multiply( DXplusY ) );
+        logger.info("Generated functions for producting.");
         
-        return null;
+        SimplePolynomialFunction xor = PolynomialFunctions.XOR( ciphertextLength );
+        SimplePolynomialFunction homomorphicXor = privateKey.computeHomomorphicFunction( xor );
+        
+        SimplePolynomialFunction PLLv1v2 = PLL.compose(V1, V2);
+        SimplePolynomialFunction PRLv3v2 = PRL.compose(V3, V2);
+        SimplePolynomialFunction PLRv1v4 = PLR.compose(V1, V4);
+        SimplePolynomialFunction PRRv3v4 = PRR.compose(V3, V4);
+        logger.info("Generated product parts.");
+        
+        return homomorphicXor.compose( 
+        		homomorphicXor.compose( PLLv1v2, PRLv3v2 ), 
+        		homomorphicXor.compose( PLRv1v4, PRRv3v4 ) );
     }
 }
