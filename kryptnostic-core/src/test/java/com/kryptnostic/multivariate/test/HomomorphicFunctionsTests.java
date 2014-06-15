@@ -29,7 +29,7 @@ public class HomomorphicFunctionsTests {
     private static final int PLAINTEXT_LENGTH = 64;
     private static final PrivateKey privateKey = new PrivateKey( CIPHERTEXT_LENGTH , PLAINTEXT_LENGTH );
     private static final PublicKey pubKey = new PublicKey( privateKey );
-    private static final boolean testNormalAnd = true;
+    private static final boolean testNormalAnd = false;
     
     @Test
     public void testKeyStats() {
@@ -61,6 +61,7 @@ public class HomomorphicFunctionsTests {
         Assert.assertEquals( hResult, result );
     }
     
+    // TODO refactor common code out of and tests
     @Test
     public void testEfficientHomomorphicAnd() throws SingularMatrixException {
         if( testNormalAnd ) {
