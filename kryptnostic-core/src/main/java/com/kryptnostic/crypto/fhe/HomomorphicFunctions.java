@@ -96,56 +96,63 @@ public class HomomorphicFunctions {
                           D  = privateKey.getD();
         int plaintextLength = E1.cols(),
             ciphertextLength = E1.rows();
-        
+        // TODO clean up declarations
         SimplePolynomialFunction X = PolynomialFunctions.lowerBinaryIdentity( ciphertextLength ); // matrix dimension mismatch
         SimplePolynomialFunction Y = PolynomialFunctions.upperBinaryIdentity( ciphertextLength );
+        
         SimplePolynomialFunction DX = D.multiply( X );
         SimplePolynomialFunction DY = D.multiply( Y );
         SimplePolynomialFunction DXplusY = D.multiply( X.xor( Y ) );
         
+        SimplePolynomialFunction F = privateKey.getF();
+        SimplePolynomialFunction FofDX = F.compose( DX );
+        SimplePolynomialFunction FofDXplusY = F.compose( DXplusY );
+        
         EnhancedBitMatrix R = EnhancedBitMatrix.randomInvertibleMatrix( E1.rows() );
-        
-        SimplePolynomialFunction R1 = PolynomialFunctions.randomFunction( ciphertextLength >> 1 ,  ciphertextLength >> 1 ) ,
-                                 R2 = PolynomialFunctions.randomFunction( ciphertextLength >> 1 ,  ciphertextLength >> 1 );
-        
-        SimplePolynomialFunction V1 = 
-                E1
-                    .multiply( L.multiply( X ).xor( R1 ) )
-                    .xor( E2.multiply( DXplusY.xor( R2 ) ) );
-        
-        SimplePolynomialFunction V2 = 
-                E1
-                    .multiply( L.multiply( Y ).xor( R2 ) )
-                    .xor( E2.multiply( DXplusY.xor( R2 ) ) );        
-        
-        SimplePolynomialFunction V3 = 
-                E1
-                    .multiply( R.multiply(  L.multiply( X ).xor( R1 ) ) )
-                    .xor( E2.multiply( DXplusY.xor( R2 ) ) );
-        
-        SimplePolynomialFunction V4 = 
-                E1
-                    .multiply( R.multiply( L.multiply( X ).xor( R1 ) ) )
-                    .xor( E2.multiply( DXplusY.xor( R2 ) ) );
+        SimplePolynomialFunction R1 = PolynomialFunctions.randomFunction( ciphertextLength << 1,  plaintextLength ) ,
+                                 R2 = PolynomialFunctions.randomFunction( ciphertextLength << 1,  plaintextLength );
+        SimplePolynomialFunction R1ofXY = R1.compose(X, Y);
+        SimplePolynomialFunction R2ofXY = R2.compose(X, Y);
         
         SimplePolynomialFunction Lx = L.multiply( X );
         SimplePolynomialFunction Ly = L.multiply( Y );
         
+        SimplePolynomialFunction V1 = 
+                E1
+                    .multiply( Lx.xor( R1ofXY ) )
+                    .xor( E2.multiply( DXplusY.xor( R1ofXY ) ) );
+        
+        SimplePolynomialFunction V2 = 
+                E1
+                    .multiply( Ly.xor( R2ofXY ) )
+                    .xor( E2.multiply( DXplusY.xor( R2ofXY ) ) );        
+        
+        SimplePolynomialFunction V3 = 
+                E1
+                    .multiply( R.multiply( FofDX.xor( R1ofXY ) ) )
+                    .xor( E2.multiply( DXplusY.xor( R1ofXY ) ) );
+        
+        SimplePolynomialFunction V4 = 
+                E1
+                .multiply( R.multiply( FofDX.xor( R2ofXY ) ) )
+                .xor( E2.multiply( DXplusY.xor( R2ofXY ) ) );
+        
+        
         SimplePolynomialFunction PLL =
                 E1
-                    .multiply( Lx.and( Ly ).xor( privateKey.getF().compose( DXplusY ) ) ) 
+                    .multiply( Lx.and( Ly ).xor( FofDXplusY ) ) 
                     .xor( E2.multiply( DXplusY ) );
         SimplePolynomialFunction PRL =
         		E1
-        			.multiply( R.inverse().multiply( Lx ).and( Ly ).xor( privateKey.getF().compose( DXplusY ) ) )
+        			.multiply( R.inverse().multiply( Lx ).and( Ly ).xor( FofDXplusY ) )
         			.xor( E2.multiply( DXplusY ) );
         SimplePolynomialFunction PLR = 
         		E1
-        			.multiply( Lx.and( R.inverse().multiply( Ly ) ).xor( privateKey.getF().compose( DXplusY ) ) )
+        			.multiply( Lx.and( R.inverse().multiply( Ly ) ).xor( FofDXplusY ) )
         			.xor( E2.multiply( DXplusY ) );
         SimplePolynomialFunction PRR =
         		E1
-	        		.multiply( R.inverse().multiply( Lx ).and( R.inverse().multiply( Ly ) ).xor( privateKey.getF().compose( DXplusY ) ) ) 
+	        		.multiply( R.inverse().multiply( Lx ).and( R.inverse().multiply( Ly ) ).xor( FofDXplusY ) ) 
 	                .xor( E2.multiply( DXplusY ) );
         logger.info("Generated functions for producting.");
         
