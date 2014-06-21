@@ -175,10 +175,10 @@ dependencies {
      * HAZELCAST - DISTRIBUTED DATA GRID
      * Transparent http clustering, distributed java.util collections
      */
-    compile 'com.hazelcast:hazelcast:3.2-SNAPSHOT'
-    compile 'com.hazelcast:hazelcast-client:3.2-SNAPSHOT'
-    compile 'com.hazelcast:hazelcast-wm:3.2-SNAPSHOT'
-    compile 'com.hazelcast:hazelcast-spring:3.2-SNAPSHOT'
+    compile 'com.hazelcast:hazelcast:3.2.3'
+    compile 'com.hazelcast:hazelcast-client:3.2.3'
+    compile 'com.hazelcast:hazelcast-wm:3.2.3'
+    compile 'com.hazelcast:hazelcast-spring:3.2.3'
 
     /*
      * EMBEDDED JETTY FOR LOCAL TESTING
