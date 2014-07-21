@@ -29,7 +29,7 @@ public class HomomorphicFunctionsTests {
     private static final int PLAINTEXT_LENGTH = 64;
     private static final PrivateKey privateKey = new PrivateKey( CIPHERTEXT_LENGTH , PLAINTEXT_LENGTH );
     private static final PublicKey pubKey = new PublicKey( privateKey );
-    private static final boolean testNormalAnd = true;
+    private static final boolean testNormalAnd = false;
     
     @Test
     public void testKeyStats() {
@@ -61,11 +61,34 @@ public class HomomorphicFunctionsTests {
         Assert.assertEquals( hResult, result );
     }
     
+    // TODO refactor common code out of and tests
     @Test
     public void testEfficientHomomorphicAnd() throws SingularMatrixException {
-        if( !testNormalAnd ) {
-            PolynomialFunction f = HomomorphicFunctions.EfficientAnd( privateKey );
+        if( testNormalAnd ) {
+        	return;
         }
+        SimplePolynomialFunction and = PolynomialFunctions.BINARY_AND( PLAINTEXT_LENGTH );
+        long start = System.currentTimeMillis();
+        PolynomialFunction homomorphicAnd = HomomorphicFunctions.EfficientAnd( privateKey );
+        long stop = System.currentTimeMillis();
+        logger.info( "Homomorphic AND generation took {} ms" , stop - start );
+        logger.info( "Homomorphic AND input length: {}" , homomorphicAnd.getInputLength() );
+        
+        BitVector v1 = BitUtils.randomVector( CIPHERTEXT_LENGTH );
+        BitVector v2 = BitUtils.randomVector( CIPHERTEXT_LENGTH );
+        BitVector plaintext1 = BitUtils.subVector( v1 , 0 , PLAINTEXT_LENGTH >>> 6 );
+        BitVector plaintext2 = BitUtils.subVector( v2 , 0 , PLAINTEXT_LENGTH >>> 6 );
+        
+        BitVector cv1 = pubKey.getEncrypter().apply( v1 );
+        BitVector cv2 = pubKey.getEncrypter().apply( v2 );
+        start = System.currentTimeMillis();
+        BitVector hResult = homomorphicAnd.apply( cv1 , cv2 );
+        stop = System.currentTimeMillis();
+        hResult = privateKey.getDecryptor().apply( hResult );
+        logger.info( "Homomorphic AND evaluation took {} ms" , stop - start );
+        BitVector result = and.apply( plaintext1 , plaintext2 );
+        
+        Assert.assertEquals( hResult, result );
     }
     
 //    @Test 
