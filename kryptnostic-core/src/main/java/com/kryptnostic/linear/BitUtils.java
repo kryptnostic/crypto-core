@@ -52,6 +52,23 @@ public final class BitUtils {
     public static BitVector subVector(BitVector v, int from, int to) {
         return new BitVector(Arrays.copyOfRange(v.elements(), from, to), ( to - from ) << 6);
     }
+    
+    /**
+     * Constructs a new BitVector from the bit range specified, where
+     * indices refer to the indices the given BitVector.
+     * @return BitVector
+     */
+    public static BitVector newFromTo(BitVector v, int fromIndex, int toIndex) {
+        Preconditions.checkArgument(toIndex > fromIndex, "toIndex must be larger than fromIndex");
+        Preconditions.checkArgument(toIndex < v.size(), "toIndex must be less than size of original vector.");
+        BitVector result = new BitVector(toIndex + 1 - fromIndex);
+        for (int i = fromIndex; i <= toIndex; i++) {
+            if (v.get(i)) {
+                result.set(i - fromIndex);
+            }
+        }
+        return result;
+    }
 
     public static BitVector randomVector(int length, int desiredHammingWeight) {
         BitVector v = new BitVector(length);
@@ -90,5 +107,28 @@ public final class BitUtils {
             }
         }
         return sorted;
+    }
+    
+    /**
+     * @return index of first set bit, or null if none set.
+     */
+    public static Integer first(BitVector v) {
+        return first(v, 0);
+    }
+    
+    /**
+     * @return index of first set bit from starting index, or null if none set.
+     */
+    public static Integer first(BitVector v, int from) {
+        Preconditions.checkArgument(from < v.size(), "From index must be less than size of vector.");
+        BitVector subVector = BitUtils.newFromTo(v, from, v.size() - 1);
+        if (subVector.cardinality() != 0) {
+            for (int i = 0; i < subVector.size(); i++) {
+                if (subVector.getQuick(i)) {
+                    return i;
+                }
+            }
+        }
+        return null;
     }
 }
