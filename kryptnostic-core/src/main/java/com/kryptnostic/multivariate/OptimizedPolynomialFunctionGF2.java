@@ -3,7 +3,6 @@ package com.kryptnostic.multivariate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.SortedMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -14,7 +13,6 @@ import org.slf4j.LoggerFactory;
 
 import cern.colt.bitvector.BitVector;
 
-import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -25,7 +23,6 @@ import com.kryptnostic.linear.BitUtils;
 import com.kryptnostic.linear.EnhancedBitMatrix;
 import com.kryptnostic.multivariate.gf2.Monomial;
 import com.kryptnostic.multivariate.gf2.SimplePolynomialFunction;
-import com.kryptnostic.multivariate.parameterization.ParameterizedPolynomialFunctionGF2;
 
 public class OptimizedPolynomialFunctionGF2 extends BasePolynomialFunction {
     private static final Logger logger = LoggerFactory.getLogger(OptimizedPolynomialFunctionGF2.class);
@@ -105,184 +102,139 @@ public class OptimizedPolynomialFunctionGF2 extends BasePolynomialFunction {
      * @return SimplePolynomialFunction
      */
     private SimplePolynomialFunction composeQuadratic(SimplePolynomialFunction inner) {
-        Pair<SortedMap<Integer, Set<Integer>>, BitVector[]> factoringResults = factorOuterMonomials();
-        SortedMap<Integer, Set<Integer>> factors = factoringResults.getLeft();
-        BitVector[] reducedOuterContributions = factoringResults.getRight();
-        // get prereqs
-        ComposePreProcessResults prereqs = preProcessCompose(inner);
-        // expand inner factors
-        BitVector[] reducedInnerContributions = reduceInnerContributions(factors, prereqs.innerRows);
-        BitVector[] results = expandFactoredOuterMonomials(factors.keySet(), reducedInnerContributions, prereqs.monomialsList,
-                prereqs.innerRows, prereqs.indices);
+        // group outer monomial-contribution pairs by common factor
+        Pair<List<Integer>, List<List<Integer>>> subfunctions = factorSubFunctions();
+        Pair<List<Monomial>, ConcurrentMap<Monomial, Integer>> mappedMonomials = getMonomialMap(inner);
 
-        return postProcessFactoredCompose(prereqs.monomialsList, prereqs.indices, results, inner, reducedOuterContributions);
-    }
-
-    /**
-     * Constructs an array of the inner contributions
-     * 
-     * @return BitVector[]
-     */
-    private BitVector[] reduceInnerContributions(SortedMap<Integer, Set<Integer>> factors, BitVector[] innerRows) {
-        BitVector[] reducedContributions = new BitVector[factors.keySet().size()];
-        int i = 0;
-        for (Integer firstFactor : factors.keySet()) {
-            Set<Integer> secondFactors = factors.get(firstFactor);
-            // Sum contributions with shared factor.
-            BitVector innerContributionSum = new BitVector(innerRows[0].size());
-            for (Integer secondFactor : secondFactors) {
-                if (secondFactor == -1) {
-                    innerContributionSum.not(); // second factor is constant, so invert the sum
-                } else {
-                    innerContributionSum.xor(innerRows[secondFactor]);
-                }
-            }
-            reducedContributions[i] = innerContributionSum;
-            i++;
+        // expand each of these subfunctions
+        List<Integer> factors = subfunctions.getLeft();
+        List<List<Integer>> outerSubFunctions = subfunctions.getRight();
+        List<BitVector[]> newContributions = Lists.newArrayList();
+        for (int i = 0; i < factors.size(); i++) {
+            // TODO handle constant outer monomial separately -- it cannot be a factor
+            BitVector[] newContribution = expandSubfunction(factors.get(i), outerSubFunctions.get(i), inner,
+                    mappedMonomials.getLeft(), mappedMonomials.getRight());
+            newContributions.add(newContribution);
         }
-        return reducedContributions;
+
+        return composeReduce(newContributions, mappedMonomials.getLeft(), inner);
+    }
+
+    private Pair<List<Monomial>, ConcurrentMap<Monomial, Integer>> getMonomialMap(SimplePolynomialFunction inner) {
+        List<Monomial> mList = Lists.newArrayList(inner.getMonomials());
+        ConcurrentMap<Monomial, Integer> indices = Maps.newConcurrentMap();
+        for (int i = 0; i < mList.size(); ++i) {
+            indices.put(mList.get(i), i);
+        }
+        return Pair.of(mList, indices);
     }
 
     /**
-     * Buckets outer monomials by first set bit, and returns a Map of first set bit to a set of second set bits in the
-     * monomials array.
-     * 
-     * @return Map<Integer,Set<Integer>>
+     * @return function containing collected monomials and contributions from each subfunction expansion
      */
-    private Pair<SortedMap<Integer, Set<Integer>>, BitVector[]> factorOuterMonomials() {
-        SortedMap<Integer, Set<Integer>> factors = Maps.newTreeMap();
-        Map<Integer, BitVector> newContributions = Maps.newHashMap();
+    private SimplePolynomialFunction composeReduce(List<BitVector[]> bucketedContributions, List<Monomial> mList,
+            SimplePolynomialFunction inner) {
+        // TODO rewrite lengths of contributions, filter contributions and monomials (?)
+        Monomial[] monomials = mList.toArray(new Monomial[0]);
+        SimplePolynomialFunction composed = new BasePolynomialFunction(inner.getInputLength(), outputLength, monomials,
+                contributions);
+        return composed;
+    }
+
+    /**
+     * @return function representing expanded outer monomials grouped by common factor.
+     */
+    private BitVector[] expandSubfunction(Integer commonFactor, List<Integer> monomialIndices,
+            SimplePolynomialFunction inner, List<Monomial> mList, ConcurrentMap<Monomial, Integer> indices) {
+        // Select outer monomials and contributions by indices
+        EnhancedBitMatrix outerContributions = getOuterContributions(monomialIndices);
+        EnhancedBitMatrix innerContributions = getInnerContributions(commonFactor, monomialIndices,
+                inner.getContributions());
+        // inner x outer contributions
+        EnhancedBitMatrix linearContributions = outerContributions.multiply(innerContributions);
+        // compute product of common-factor with expanded linear contributions
+        BitVector commonFactorContribution = inner.getContributions()[commonFactor];
+        List<BitVector> linearContributionRows = linearContributions.getRows();
+        BitVector[] newContributions = new BitVector[linearContributionRows.size()];
+        for (int i = 0; i < linearContributionRows.size(); i++) {
+            newContributions[i] = product(commonFactorContribution, linearContributionRows.get(i), mList, indices);
+        }
+        return newContributions;
+    }
+
+    /**
+     * @param bitVectors
+     * @return EnhancedBitMatrix of inner contributions corresponding to the non-shared factors
+     * 
+     *         m' x Iol, where m' is the number of distinct, non-shared factors.
+     */
+    private EnhancedBitMatrix getInnerContributions(Integer commonFactor, List<Integer> monomialIndices,
+            BitVector[] innerContributions) {
+        Set<Integer> factors = Sets.newHashSet();
+        for (Integer index : monomialIndices) {
+            Monomial m = monomials[index];
+            List<Integer> secondaryFactors = BitUtils.assertedIndices(m, commonFactor + 1);
+            factors.addAll(secondaryFactors);
+        }
+        // Get inner contributions in row form -- outputlength x numterms
+        EnhancedBitMatrix contributionRows = new EnhancedBitMatrix(Lists.newArrayList(innerContributions));
+        contributionRows = contributionRows.tranpose();
+        List<BitVector> innerRows = contributionRows.getRows();
+        // Select the rows corresponding to the outer monomial factor for inclusion in result matrix
+        List<BitVector> selectedRows = Lists.newArrayList();
+        for (Integer factor : factors) {
+            selectedRows.add(innerRows.get(factor));
+        }
+        EnhancedBitMatrix result = new EnhancedBitMatrix(selectedRows);
+        return result.tranpose();
+    }
+
+    /**
+     * @return EnhancedBitMatrix of the outer contributions corresponding to the subset of outer monomials which share a
+     *         common factor.
+     * 
+     *         Ool x m, where m is the number of monomials sharing a factor
+     */
+    private EnhancedBitMatrix getOuterContributions(List<Integer> monomialIndices) {
+        List<BitVector> contributionRows = Lists.newArrayList();
+        for (Integer index : monomialIndices) {
+            contributionRows.add(contributions[index].copy());
+        }
+        return new EnhancedBitMatrix(contributionRows);
+    }
+
+    /**
+     * @return Pair of an array of outer monomial factors and an array of Sets of indices of the outer monomials sharing
+     *         these factors.
+     */
+    private Pair<List<Integer>, List<List<Integer>>> factorSubFunctions() {
+        List<Integer> factors = Lists.newArrayList();
+        List<List<Integer>> bucketIndices = Lists.newArrayList();
+        Map<Integer, Integer> factorIndices = Maps.newHashMap();
+
         for (int i = 0; i < monomials.length; i++) {
-            Monomial m = monomials[i].clone();
+            Monomial m = monomials[i];
             if (m.isZero()) {
                 continue;
+                // TODO handle constant monomials
             }
-            
-            Integer firstSetBit = BitUtils.first(m);
-            Integer secondSetBit = -1;
-            m.clear(firstSetBit);
-            if (!m.isZero()) {
-                secondSetBit = BitUtils.first(m);
-            }
+            int factor = BitUtils.first(m);
 
-            Set<Integer> secondSetBits = factors.get(firstSetBit);
-            if (secondSetBits == null) {
-                secondSetBits = Sets.newHashSet();
-                
+            List<Integer> bucket;
+            Integer index = factorIndices.get(factor);
+            if (index == null) {
+                index = factors.size();
+                factors.add(index);
+                factorIndices.put(factor, index);
+                bucket = Lists.newArrayList();
+                bucketIndices.add(bucket);
             } else {
-                
+                bucket = bucketIndices.get(index);
             }
-            
-            BitVector reducedOuterContribution = newContributions.get(firstSetBit);
-            if (reducedOuterContribution == null) {
-                reducedOuterContribution = contributions[i];
-                newContributions.put(firstSetBit, reducedOuterContribution);
-            } else {
-                reducedOuterContribution.xor(contributions[i]);
-                newContributions.put(firstSetBit, reducedOuterContribution);
-            }
-            
-            secondSetBits.add(secondSetBit);
-            factors.put(firstSetBit, secondSetBits);
+            bucket.add(i);
+
         }
-        
-        return Pair.of(factors, newContributions.values().toArray(new BitVector[newContributions.values().size()]));
-    }
-
-    // TODO make concurrent
-    protected BitVector[] expandFactoredOuterMonomials(Iterable<Integer> outerFactors, BitVector[] reducedRows,
-            final List<Monomial> mList, final BitVector[] innerRows, final ConcurrentMap<Monomial, Integer> indices) {
-        List<BitVector> results = Lists.newArrayList();
-        int i = 0;
-        for (Integer factor : outerFactors) {
-            BitVector newContribution = product(innerRows[factor], reducedRows[i], mList, indices);
-            results.add(newContribution);
-            i++;
-        }
-        return results.toArray(new BitVector[results.size()]);
-    }
-    
-    private SimplePolynomialFunction postProcessFactoredCompose(List<Monomial> mList, Map<Monomial, Integer> indices,
-            BitVector[] results, SimplePolynomialFunction inner, BitVector[] reducedOuterContributions) {
-                
-        Optional<Integer> constantOuterMonomialIndex = Optional.absent();
-        Optional<Integer> constantInnerMonomialIndex = Optional.fromNullable(indices.get(Monomial
-                .constantMonomial(inner.getInputLength())));
-        
-        // Now lets fix the contributions so they're all the same length.
-        for (int i = 0; i < results.length; ++i) {
-            BitVector contribution = results[i];
-            if (contribution.size() != mList.size()) {
-                contribution.setSize(mList.size());
-            }
-        }
-        /*
-         * Calculate resulting set of contributions in terms of the new monomial basis.
-         * So for every outer monomial factor, xor all of the contributions of the outer monomials that share that factor,
-         * then calculate new outer contributions using these condensed contributions and the results.
-         */
-        BitVector[] outputContributions = new BitVector[outputLength];
-
-        for (int row = 0; row < outputLength; row++) {
-            outputContributions[row] = new BitVector(mList.size());
-            for (int i = 0; i < reducedOuterContributions.length; i++) {
-                if (reducedOuterContributions[i].get(row)) {
-                    if (monomials[i].isZero()) {
-                        constantOuterMonomialIndex = Optional.of(i);
-                    } else {
-                        outputContributions[row].xor(results[i]);
-                    }
-                }
-            }
-        }
-
-        /*
-         * After we have computed the contributions in terms of the new monomial basis we transform from row to column
-         * form of contributions to match up with each monomial in mList
-         */
-        List<BitVector> unfilteredContributions = Lists.newArrayList(outputContributions);
-        EnhancedBitMatrix.transpose(unfilteredContributions, mList.size());
-
-        /*
-         * If the outer monomial has constant terms and the unfiltered contributions have a constant term, than we xor
-         * them together to get the overall constant contributions.
-         */
-
-        if (constantOuterMonomialIndex.isPresent()) {
-            if (constantInnerMonomialIndex.isPresent()) {
-                unfilteredContributions.get(constantInnerMonomialIndex.get()).xor(
-                        contributions[constantOuterMonomialIndex.get()]);
-            } else {
-                // Don't use the outer monomial directly since it maybe the wrong size.
-                // mList.add( monomials[ constantOuterMonomialIndex.get() ] );
-                mList.add(Monomial.constantMonomial(inner.getInputLength()));
-                unfilteredContributions.add(contributions[constantOuterMonomialIndex.get()]);
-            }
-        }
-
-        /*
-         * Now we filter out any monomials, which have nil contributions.
-         */
-
-        List<BitVector> filteredContributions = Lists.newArrayListWithCapacity(unfilteredContributions.size());
-        List<BitVector> filteredMonomials = Lists.newArrayListWithCapacity(mList.size());
-        for (int i = 0; i < mList.size(); ++i) {
-            BitVector contrib = unfilteredContributions.get(i);
-            if (notNilContributionPredicate.apply(contrib)) {
-                filteredContributions.add(contrib);
-                filteredMonomials.add(mList.get(i));
-            }
-        }
-
-        if (inner.isParameterized()) {
-            ParameterizedPolynomialFunctionGF2 ppf = (ParameterizedPolynomialFunctionGF2) inner;
-            return new ParameterizedPolynomialFunctionGF2(inner.getInputLength(), outputLength,
-                    filteredMonomials.toArray(new Monomial[0]), filteredContributions.toArray(new BitVector[0]),
-                    ppf.getPipelines());
-        }
-
-        return new BasePolynomialFunction(inner.getInputLength(), outputLength,
-                filteredMonomials.toArray(new Monomial[0]), filteredContributions.toArray(new BitVector[0]));
+        return Pair.of(factors, bucketIndices);
     }
 
     @Override
