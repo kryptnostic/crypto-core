@@ -1,5 +1,6 @@
 package com.kryptnostic.bitwise;
 
+import java.util.List;
 import java.util.Random;
 
 import org.junit.Assert;
@@ -57,7 +58,7 @@ public class BitUtilsTests {
     public void testFirst() {
         BitVector empty = new BitVector(64);
         Integer first = BitUtils.first(empty, 0);
-        Assert.assertNull(first);
+        Assert.assertTrue(first == -1);
         
         for (int i = 0; i < 2000; i++) {
             BitVector random = BitUtils.randomVector(128);
@@ -92,5 +93,16 @@ public class BitUtilsTests {
         newVector.clear(2);
         newVector.clear(101);
         Assert.assertTrue(newVector.cardinality() == 0);
+    }
+    
+    @Test
+    public void testAssertedIndices() {
+        BitVector random = BitUtils.randomVector(128);
+        List<Integer> asserted = BitUtils.assertedIndices(random, 0);
+        for (Integer index : asserted) {
+           Assert.assertTrue(random.get(index));
+           random.clear(index);
+        }
+        Assert.assertTrue(random.cardinality() == 0);
     }
 }

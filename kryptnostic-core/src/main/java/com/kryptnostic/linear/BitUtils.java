@@ -1,12 +1,14 @@
 package com.kryptnostic.linear;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 import java.util.Set;
 
 import cern.colt.bitvector.BitVector;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.kryptnostic.multivariate.MultivariateUtils;
 
@@ -110,16 +112,16 @@ public final class BitUtils {
     }
     
     /**
-     * @return index of first set bit, or null if none set.
+     * @return index of first set bit, or -1 if none set.
      */
-    public static Integer first(BitVector v) {
+    public static int first(BitVector v) {
         return first(v, 0);
     }
     
     /**
-     * @return index of first set bit from starting index, or null if none set.
+     * @return index of first set bit from starting index, or -1 if none set.
      */
-    public static Integer first(BitVector v, int from) {
+    public static int first(BitVector v, int from) {
         Preconditions.checkArgument(from < v.size(), "From index must be less than size of vector.");
         BitVector subVector = BitUtils.newFromTo(v, from, v.size() - 1);
         if (subVector.cardinality() != 0) {
@@ -129,6 +131,26 @@ public final class BitUtils {
                 }
             }
         }
-        return null;
+        return -1;
+    }
+    
+    public static List<Integer> assertedIndices(BitVector v, int from) {
+        Preconditions.checkArgument(from < v.size(), "From index must be less than size of vector.");
+        List<Integer> indices = Lists.newArrayList();
+        for (int i = from; i < v.size(); i ++) {
+            if (v.get(i)) {
+                indices.add(i);
+            }
+        }
+        return indices;
+    }
+    
+    /**
+     * @return v, BitVector of length with all bits true.
+     */
+    public static BitVector constant(int length) {
+        BitVector v = new BitVector(length);
+        v.not();
+        return v;
     }
 }
